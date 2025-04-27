@@ -72,6 +72,19 @@ class CategoryResource extends Resource
         ];
     }
 
+    public static function canViewAny(): bool
+    {
+       
+        return auth()->user()?->hasRole(['admin', 'logistica']);
+    }
+
+   
+    public static function shouldRegisterNavigation(): bool
+    {
+        
+        return auth()->user()?->hasRole(['admin', 'logistica']);
+    }
+
     public static function getPages(): array
     {
         return [
