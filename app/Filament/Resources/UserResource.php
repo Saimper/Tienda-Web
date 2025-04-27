@@ -102,7 +102,7 @@ class UserResource extends Resource
       
        public static function shouldRegisterNavigation(): bool
        {
-        
+           
            return auth()->user()?->hasRole('admin');
        }
 
