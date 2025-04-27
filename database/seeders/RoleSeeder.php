@@ -15,27 +15,27 @@ class RoleSeeder extends Seeder
      */
     public function run(): void
     {
-          // Crear los permisos si no existen
+          
           $permissions = [
             'access ventas',
             'access contabilidad',
-            'access inventario', // Logística = Inventario
+            'access inventario',
         ];
 
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(['name' => $permission]);
         }
 
-        // Crear los roles
+       
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
         $ventasRole = Role::firstOrCreate(['name' => 'ventas']);
         $contabilidadRole = Role::firstOrCreate(['name' => 'contabilidad']);
         $logisticaRole = Role::firstOrCreate(['name' => 'inventario']);
 
-        // Asignar permisos al rol admin (tendrá todos los permisos)
+       
         $adminRole->givePermissionTo(Permission::all());
 
-        // Asignar permisos a los demás roles
+       
         $ventasRole->givePermissionTo('access ventas');
         $contabilidadRole->givePermissionTo('access contabilidad');
         $logisticaRole->givePermissionTo('access inventario');
