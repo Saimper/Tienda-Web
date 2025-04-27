@@ -18,7 +18,7 @@ class EmployeeResource extends Resource
 {
     protected static ?string $model = Employee::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-user-group';
     protected static ?string $navigationGroup = 'Admin';
     
 
@@ -83,6 +83,18 @@ class EmployeeResource extends Resource
         return [
             //
         ];
+    }
+    public static function canViewAny(): bool
+    {
+       
+        return auth()->user()?->hasRole('admin');
+    }
+
+   
+    public static function shouldRegisterNavigation(): bool
+    {
+        
+        return auth()->user()?->hasRole('admin');
     }
 
     public static function getPages(): array
