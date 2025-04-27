@@ -30,7 +30,7 @@ class RoleSeeder extends Seeder
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
         $ventasRole = Role::firstOrCreate(['name' => 'ventas']);
         $contabilidadRole = Role::firstOrCreate(['name' => 'contabilidad']);
-        $logisticaRole = Role::firstOrCreate(['name' => 'logistica']);
+        $logisticaRole = Role::firstOrCreate(['name' => 'inventario']);
 
         // Asignar permisos al rol admin (tendrá todos los permisos)
         $adminRole->givePermissionTo(Permission::all());
