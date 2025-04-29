@@ -56,7 +56,7 @@ class ProductResource extends Resource
                 ->label('Categoría')
                 ->required(),
 
-            Forms\Components\FileUpload::make('images')
+            Forms\Components\FileUpload::make('image')
                 ->label('Imágenes')
                 ->multiple()
                 ->disk('public')
@@ -73,7 +73,7 @@ class ProductResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')
+            Tables\Columns\TextColumn::make('name')
                 ->sortable()
                 ->searchable(),
             Tables\Columns\TextColumn::make('sku')
@@ -110,7 +110,7 @@ class ProductResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            
         ];
     }
 
