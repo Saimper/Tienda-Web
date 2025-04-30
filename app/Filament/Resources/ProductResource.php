@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use Illuminate\Support\Str;
 use App\Filament\Resources\ProductResource\Pages;
-use App\Filament\Resources\ProductResource\RelationManagers;
 use App\Models\Product;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -12,7 +11,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Collection;
 
 class ProductResource extends Resource
@@ -24,6 +23,7 @@ class ProductResource extends Resource
     protected static ?string $modelLabel = 'Producto';
     protected static ?string $navigationLabel = 'Productos';
     protected static ?int $navigationSort = 1;
+    protected static int $lowStockThreshold = 10;
 
     public static function form(Form $form): Form
     {
@@ -59,7 +59,10 @@ class ProductResource extends Resource
                             ->numeric()
                             ->label('Existencia')
                             ->placeholder('0')
-                            ->columnSpan(1),
+                            ->columnSpan(1)
+                            ->suffixIcon(fn ($state) => $state <= static::$lowStockThreshold ? 'heroicon-o-exclamation-triangle' : null)
+                            ->suffixIconColor(fn ($state) => $state <= static::$lowStockThreshold ? 'danger' : null)
+                            ->helperText(fn ($state) => $state <= static::$lowStockThreshold ? "¡Stock bajo! Nivel actual: {$state}" : null),
                     ])
                     ->columns(4),
                     
@@ -80,7 +83,7 @@ class ProductResource extends Resource
                             ->columnSpan(2)
                             ->rows(3),
                             
-                            Forms\Components\FileUpload::make('image')
+                        Forms\Components\FileUpload::make('image')
                             ->label('Imagen del Producto')
                             ->disk('public')
                             ->directory('products')
@@ -91,19 +94,9 @@ class ProductResource extends Resource
                             ->maxSize(10240)
                             ->columnSpan(2)
                             ->helperText('Formatos: JPG, PNG, WEBP | Máx: 10MB')
-                            ->loadingIndicatorPosition('right')
-                            ->panelLayout('integrated')
-                            ->downloadable()
-                            ->openable()
                             ->getUploadedFileNameForStorageUsing(
-                                function ($file): string {
-                                    $extension = $file->getClientOriginalExtension();
-                                    $name = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-                                    return 'products/'.Str::slug($name).'-'.uniqid().'.'.$extension;
-                                }
-                            )
-                            ->dehydrated(true) // Mantiene el valor existente si no se sube nueva imagen
-                            ->default(null), // Evita conflictos con imágenes existentes
+                                fn ($file): string => 'products/'.Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)).'-'.uniqid().'.'.$file->getClientOriginalExtension()
+                            ),
                     ])
                     ->columns(3),
             ]);
@@ -113,21 +106,16 @@ class ProductResource extends Resource
     {
         return $table
             ->columns([
-                
                 Tables\Columns\ImageColumn::make('image')
                     ->label('Imagen')
-                    ->getStateUsing(function ($record) {
-                        if (!$record->image) {
-                            return null;
-                        }
-                        return asset('storage/'.$record->image);
-                    })
+                    ->getStateUsing(fn ($record) => $record->image ? asset('storage/'.$record->image) : null)
                     ->size(60)
                     ->square()
                     ->extraImgAttributes([
                         'class' => 'rounded-lg shadow',
                         'style' => 'object-fit: cover'
                     ]),
+                    
                 Tables\Columns\TextColumn::make('name')
                     ->label('Producto')
                     ->sortable()
@@ -154,7 +142,16 @@ class ProductResource extends Resource
                 Tables\Columns\TextColumn::make('stock')
                     ->label('Stock')
                     ->sortable()
-                    ->color(fn (Product $record) => $record->stock > 20 ? 'success' : ($record->stock > 0 ? 'warning' : 'danger'))
+                    ->color(fn (Product $record): string => match (true) {
+                        $record->stock <= 0 => 'danger',
+                        $record->stock <= static::$lowStockThreshold => 'warning',
+                        default => 'success',
+                    })
+                    ->icon(fn (Product $record): ?string => match (true) {
+                        $record->stock <= 0 => 'heroicon-o-x-circle',
+                        $record->stock <= static::$lowStockThreshold => 'heroicon-o-exclamation-triangle',
+                        default => null,
+                    })
                     ->alignCenter(),
                     
                 Tables\Columns\TextColumn::make('category.name')
@@ -188,6 +185,12 @@ class ProductResource extends Resource
                         true: fn (Builder $query) => $query->where('stock', '>', 0),
                         false: fn (Builder $query) => $query->where('stock', '<=', 0),
                     ),
+                    
+                Tables\Filters\Filter::make('low_stock')
+                    ->label('Stock bajo')
+                    ->query(fn (Builder $query): Builder => $query->where('stock', '<=', static::$lowStockThreshold))
+                    ->indicator('Stock bajo')
+                    ->default(false),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make()
@@ -196,11 +199,35 @@ class ProductResource extends Resource
                     
                 Tables\Actions\EditAction::make()
                     ->icon('heroicon-o-pencil')
-                    ->color('warning'),
+                    ->color('primary')
+                    ->after(function (Product $record) {
+                        if ($record->stock <= static::$lowStockThreshold) {
+                            Notification::make()
+                                ->title('¡Stock bajo!')
+                                ->body("El producto {$record->name} tiene stock bajo ({$record->stock} unidades)")
+                                ->warning()
+                                ->persistent()
+                                ->send();
+                        }
+                    }),
                     
                 Tables\Actions\DeleteAction::make()
                     ->icon('heroicon-o-trash')
+                    ->color('danger')
                     ->successNotificationTitle('Producto eliminado exitosamente'),
+                    
+                Tables\Actions\Action::make('StockBajo')
+                    ->icon('heroicon-o-bell-alert')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->visible(fn (Product $record): bool => $record->stock <= static::$lowStockThreshold)
+                    ->action(function (Product $record) {
+                        Notification::make()
+                            ->title('¡Stock bajo notificado!')
+                            ->body("Se ha enviado una alerta sobre el stock bajo del producto {$record->name}")
+                            ->success()
+                            ->send();
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -219,11 +246,17 @@ class ProductResource extends Resource
                         ])
                         ->action(function (Collection $records, array $data): void {
                             $records->each->update(['stock' => $data['stock']]);
-                        })
-                        ->after(fn () => Notification::make()
-                            ->title('Stock actualizado')
-                            ->success()
-                            ->send()),
+                            
+                            $lowStockProducts = $records->filter(fn ($record) => $record->stock <= static::$lowStockThreshold);
+                            
+                            if ($lowStockProducts->isNotEmpty()) {
+                                Notification::make()
+                                    ->title('¡Atención!')
+                                    ->body(count($lowStockProducts).' productos quedaron con stock bajo')
+                                    ->warning()
+                                    ->send();
+                            }
+                        }),
                 ]),
             ])
             ->emptyStateActions([
@@ -237,21 +270,25 @@ class ProductResource extends Resource
             ->deferLoading();
     }
 
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
-    }
-
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListProducts::route('/'),
             'create' => Pages\CreateProduct::route('/create'),
-            'view' => Pages\ViewProduct::route('/{record}'),
+            'view' => Pages\ViewProduct::route('/{record}'), 
             'edit' => Pages\EditProduct::route('/{record}/edit'),
         ];
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $lowStockCount = static::getModel()::where('stock', '<=', static::$lowStockThreshold)->count();
+        return $lowStockCount > 0 ? (string)$lowStockCount : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'danger';
     }
 
     public static function canViewAny(): bool
